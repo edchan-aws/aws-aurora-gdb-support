@@ -1,0 +1,56 @@
+#!/bin/bash
+cd /tmp
+
+# update SSM & upgrade packages
+echo "$(date "+%F %T") Updating SSM agent and python packages" >> /debug.log           
+sudo yum install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
+sudo systemctl start amazon-ssm-agent
+source ~/.bashrc
+sudo yum update -y
+sudo yum install python37 -y
+echo "$(date "+%F %T") Updated SSM agent and python packages" >> /debug.log
+
+# path management
+export PATH=/usr/local/bin:$PATH
+export PYTHONPATH=/usr/local/bin:$PYTHONPATH
+alias python=python37
+alias pip=pip3
+
+# install superset and mysql client
+echo "$(date "+%F %T") Installing Superset and prereq application packages" >> /debug.log            
+sudo yum install gcc gcc-c++ python3-devel cyrus-sasl-devel mysql mysql-devel jq -y
+sudo pip3 install cchardet==1.0.0
+sudo pip3 install superset==0.30.0
+sudo pip3 install mysql
+echo "$(date "+%F %T") Installed Superset and prereq application packages" >> /debug.log
+
+# downgrade werkzeug and WTForms included by superset breaks setup
+echo "$(date "+%F %T") Downgrading werkzeug package" >> /debug.log          
+sudo pip3 uninstall werkzeug WTForms -y
+sudo pip3 install werkzeug==0.15.0 WTForms==2.2.1
+
+# Create an admin user
+echo "$(date "+%F %T") Setting up admin user ( admin / [pw from parameters] )" >> /debug.log
+superset db upgrade
+superset fab create-admin \
+              --username admin \
+              --firstname Superset \
+              --lastname Admin \
+              --email admin@superset.com \
+              --password auroragdb321
+
+# Initialize the database
+echo "$(date "+%F %T") Applying DB Initialization" >> /debug.log
+
+superset load_examples
+
+# Create default roles and permissions
+echo "$(date "+%F %T") Setting up roles and perms" >> /debug.log
+superset init
+echo "$(date "+%F %T") Complete Setting up Superset" >> /debug.log
+
+# Starts Web Server on gunicorn
+echo "$(date "+%F %T") Serve web traffic with gunicorn" >> /debug.log          
+nohup gunicorn -b 0.0.0.0:80 --limit-request-line 0 --limit-request-field_size 0 superset:app
+
+superset init gunicorn -b 0.0.0.0:80 --limit-request-line 0 --limit-request-field_size 0 superset:app

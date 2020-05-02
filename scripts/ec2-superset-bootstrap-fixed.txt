@@ -1,0 +1,46 @@
+#!/bin/bash
+cd /tmp
+
+# update SSM & upgrade packages
+echo "$(date "+%F %T") Updating SSM agent and python packages" >> /debug.log           
+sudo yum install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
+sudo systemctl start amazon-ssm-agent
+source ~/.bashrc
+sudo yum update -y >> /debug.log
+echo "$(date "+%F %T") Updated SSM agent" >> /debug.log
+sudo amazon-linux-extras install postgresql10 vim epel
+sudo yum install gcc gcc-c++ python37 python3-devel cyrus-sasl-devel mysql mysql-devel postgresql postgresql-devel jq -y >> /debug.log
+echo "$(date "+%F %T") Installed Python and MySQL/pgSQL dependencies" >> /debug.log
+
+# path management
+export PATH=/usr/local/bin:$PATH
+export PYTHONPATH=/usr/local/bin:$PYTHONPATH
+alias python=python37
+alias pip=pip3
+
+# downgrade/force installation packages to last good known versions for superset and dependencies
+# desired path: wget https://awsauroralabsmy.com/support/superset-requirements.txt
+wget https://awsauroralabsmy.com/support/superset-requirements.txt
+sudo pip3 install -r superset-requirements.txt >> /debug.log
+echo "$(date "+%F %T") Force installed to frozen application packages list" >> /debug.log
+
+# create an admin user
+echo "$(date "+%F %T") Setting up admin user ( admin / [pw from parameters] )" >> /debug.log
+superset fab create-admin \
+              --username admin \
+              --firstname Superset \
+              --lastname Admin \
+              --email admin@superset.com \
+              --password auroragdb321
+#             --password ${dbMasterPassword}              
+
+# initialize the superset database
+echo "$(date "+%F %T") Applying DB Initialization" >> /debug.log
+superset db upgrade
+superset load_examples
+superset init
+echo "$(date "+%F %T") Superset Configuration and Initialization Complete" >> /debug.log
+
+# starts web server with gunicorn; forcing on port 80 (default 8088)
+echo "$(date "+%F %T") Serving web traffic with gunicorn" >> /debug.log
+nohup gunicorn -b 0.0.0.0:80 --limit-request-line 0 --limit-request-field_size 0 superset:app
