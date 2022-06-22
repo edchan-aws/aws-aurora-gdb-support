@@ -46,7 +46,7 @@ marshmallow-enum==1.5.1
 marshmallow-sqlalchemy==0.22.3
 mysql==0.0.2
 mysqlclient==1.4.6
-numpy==1.18.2
+numpy==1.22.0
 pandas==0.24.2
 parsedatetime==2.5
 pathlib2==2.3.5
